@@ -6,8 +6,10 @@
 
 import json
 import random
+import pathlib
 from pathlib import Path
 from time import time
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -22,15 +24,15 @@ from tldr.utils import AverageMeter, get_knn_graph, get_progress_bar, parse_net_
 class TLDR_Module(nn.Module):
     def __init__(
         self,
-        inputdim,
-        n_components,
-        encoder="linear",
-        projector="mlp-2-2048",
-        batch_size=1024,
-        scale_loss=1.0 / 32,
-        lambd=3.9e-3,
-        norm_layer="BN",
-        loss="BT",
+        inputdim: int,
+        n_components: int,
+        encoder: str = "linear",
+        projector: str = "mlp-2-2048",
+        batch_size: int = 1024,
+        scale_loss: float = 1.0 / 32,
+        lambd: float = 3.9e-3,
+        norm_layer: str = "BN",
+        loss: str = "BT",
     ):
         super().__init__()
 
@@ -91,12 +93,36 @@ class TLDR_Module(nn.Module):
         # normalization layer for the representations z1 and z2
         self.bn = nn.BatchNorm1d(bn_size, affine=False)
 
-    def forward(self, X):
+    def forward(self, X: torch.Tensor):
+        """Performs a forward pass over the encoder, projecting the input features to the learnt space
+
+        Parameters
+        ----------
+        X : tensor
+            N x D input tensor containing N samples of dimension D
+
+        Returns
+        -------
+        Z : tensor
+            Projected output tensor of size N x n_components
+        """
         return self.encoder(X)
 
-    def match(self, y1, y2):
-        z1 = self.encoder(y1)
-        z2 = self.encoder(y2)
+    def match(self, x1: torch.Tensor, x2: torch.Tensor):
+        """Computes the matching loss over two sets of sample pairs
+
+        Parameters
+        ----------
+        x1, x2 : tensor
+            Two tensors of size N x D where each row represents a matching pair
+
+        Returns
+        -------
+        loss : tensor
+            Aggregated matching loss over all training pairs
+        """
+        z1 = self.encoder(x1)
+        z2 = self.encoder(x2)
         if self.projector is not None:
             z1 = self.projector(z1)
             z2 = self.projector(z2)
@@ -104,12 +130,13 @@ class TLDR_Module(nn.Module):
         if self.loss in ["BT", "BarlowTwins"]:
             loss = BarlowTwinsLoss(self.bn(z1), self.bn(z2), self.batch_size, self.scale_loss, self.lambd)
         elif self.loss in ["MSE", "MeanSquaredError"]:
-            loss = nn.MSELoss(reduction="mean")(torch.vstack([y1, y2]), torch.vstack([z1, z2])).mul(self.scale_loss)
+            loss = nn.MSELoss(reduction="mean")(torch.vstack([x1, x2]), torch.vstack([z1, z2])).mul(self.scale_loss)
         elif self.loss == "Contrastive":
             raise ValueError("Contrastive loss temporary removed :_( (WIP)")
         return loss.unsqueeze(0)
 
-    def set_device(self, device):
+    def set_device(self, device: torch.device):
+        """Selects the device"""
         self.encoder.to(device)
         self.projector.to(device)
 
@@ -117,32 +144,87 @@ class TLDR_Module(nn.Module):
 class TLDR:
     def __init__(
         self,
-        n_components=32,
-        encoder="linear",
-        projector="mlp-2-2048",
-        n_neighbors=5,
-        device="cpu",
-        pin_memory=False,
-        knn_graph=None,
-        inputdim=None,
-        batch_size=1024,
-        scale_loss=1.0 / 32,
-        lambd=3.9e-3,
-        epochs=100,
-        learning_rate=0.2,
-        warmup_epochs=10,
-        norm_layer="BN",
-        loss="BT",
-        gaussian=False,
-        output_folder=None,
-        snapshot_freq=0,
-        resume=False,
+        n_components: int = 32,
+        encoder: str = "linear",
+        projector: str = "mlp-2-2048",
+        n_neighbors: int = 5,
+        pin_memory: bool = False,
+        knn_approximation: Optional["str"] = None,
+        knn_graph: Optional[np.ndarray] = None,
+        inputdim: Optional[int] = None,
+        batch_size: int = 1024,
+        scale_loss: float = 1.0 / 32,
+        lambd: float = 3.9e-3,
+        epochs: int = 100,
+        learning_rate: float = 0.2,
+        warmup_epochs: int = 10,
+        norm_layer: str = "BN",
+        loss: str = "BT",
+        gaussian: bool = False,
+        output_folder: Optional[str] = None,
+        snapshot_freq: int = 0,
+        resume: bool = False,
+        save_best: bool = False,
+        verbose: int = 0,
+        random_state: Optional[int] = None,
+        device: Union[str, torch.device] = "cpu",
         writer=None,
-        save_best=False,
-        verbose=0,
-        random_state=None,
-        knn_approximation=None,
     ):
+        """ Constructor method of the TLDR class
+
+        Parameters
+        ----------
+        n_components : int
+            Output dimension
+        encoder : str
+            Encoder network architecture specification string (see README)
+        projector : str
+            Projector network architecture specification string (see README)
+        n_neighbors : int
+            number of nearest neighbors used to sample training pairs
+        knn_approximation : str (optional)
+            Amount of approximation to use during the knn computation [None, low, medium, high]
+        pin_memory : bool
+            Pin all data to the memory of the device
+        knn_graph : np.ndarray (optional)
+            Array containing the indices of nearest neighbors of each sample
+        inputdim : int (optional)
+            Input dimension
+        batch_size : int
+            Batch size
+        scale_loss : float
+            Loss scaling parameter of the LARS optimizer
+        lambd : float
+            Lambda parameter of the BarlowTwins loss
+        epochs : int
+            Number of training epoch
+        learning_rate : float
+            Learning rate
+        warmup_epochs : int
+            Waming-up epochs
+        norm_layer : str
+            Type of normalization layer used [BN, LN]
+        loss : str
+            Training loss [BarlowTwins, MeanSquaredError, Contrastive]
+        gaussian : bool
+            Uses uniform random noise to generate training pairs
+        output_folder : str (optional)
+            Local folder where the snapshots and final model will be saved
+        snapshot_freq : int
+            Number of epochs to save a new snapshot
+        resume : bool
+            Enables auto-resuming using snapshots in `output_folder`
+        save_best : bool
+            Saves the best intermediate model
+        verbose : int
+            Verbosity level [0, 1, 2]
+        random_state : int (optional)
+            Fixes the random seed
+        device : str, torch.device
+            Selects the device [cpu, gpu]
+        writer : TBWriter (optional)
+            TensorBoard writer
+        """
         self.architecture = {
             "inputdim": inputdim,
             "n_components": n_components,
@@ -183,10 +265,12 @@ class TLDR:
             random.seed(self.random_state)
 
     def initialize_model(self):
+        """Initializes the TLDR module using the hyper-parameters in self.architecture"""
         self.model = TLDR_Module(**self.architecture)
         self.model.to(self.device)
 
     def parameters(self):
+        """Returns the parameters of the model"""
         if self.model is None:
             raise RuntimeError("model not initialized")
 
@@ -201,19 +285,48 @@ class TLDR:
 
     def fit(
         self,
-        X,
-        epochs=None,
-        warmup_epochs=None,
-        batch_size=None,
-        knn_graph=None,
-        output_folder=None,
-        snapshot_freq=None,
+        X: Union[torch.tensor, np.ndarray],
+        epochs: Optional[int] = None,
+        warmup_epochs: Optional[int] = None,
+        batch_size: Optional[int] = None,
+        knn_graph: Optional[np.ndarray] = None,
+        output_folder: Optional[str] = None,
+        snapshot_freq: Optional[int] = None,
+        print_every: Optional[int] = None,
+        retain_projector: bool = False,
         dataset_val=None,
-        l2_norm_eval=False,
-        print_every=None,
-        eval_every=None,
-        retain_projector=False,
+        l2_norm_eval: Optional[bool] = False,
+        eval_every: Optional[int] = None,
     ):
+        """Trains a model on the input data
+
+        Parameters
+        ----------
+        X : torch.tensor, np.ndarray
+            N x D input array containing N samples of dimension D
+        epochs : int
+            Number of training epoch
+        warmup_epochs : int
+            Waming-up epochs
+        batch_size : int
+            Batch size
+        knn_graph : np.ndarray (optional)
+            Array containing the indices of nearest neighbors of each sample
+        output_folder : str (optional)
+            Local folder where the snapshots and final model will be saved
+        snapshot_freq : int
+            Number of epochs to save a new snapshot
+        print_every : int
+            Prints useful training information every given number of steps
+        retain_projector : bool
+            Flag so that the projector parameters are retained after training
+        dataset_val : torch.data.Dataset (optional)
+            A dataset class containing evaluation data and code
+        l2_norm_eval : bool
+            Enables L2 normalization before evaluation (optional
+        eval_every : int (optional)
+            Runs evaluation every given number of epochs
+        """
         self.architecture["inputdim"] = X.shape[1]
         if epochs is not None:
             self.epochs = epochs
@@ -299,10 +412,10 @@ class TLDR:
                         y1 = X[ind, :]
                         y2 = X[ind_nn, :]
                     else:
-                        if self.gaussian:  # Synthetic neighbours
+                        if self.gaussian:  # Synthetic neighbors
                             y1 = X[ind, :]
                             y2 = y1 + (torch.std(y1) ** 0.5) * torch.randn(y1.shape).to(self.device) * 0.1
-                        else:  # Randomly select m neighbours as training pair(s)
+                        else:  # Randomly select m neighbors as training pair(s)
                             y1 = X[ind, :]
                             ind_nn = np.random.randint(self.n_neighbors, size=self.batch_size)
                             y2 = X[self.knn_graph[ind, ind_nn], :]
@@ -369,7 +482,31 @@ class TLDR:
         if not retain_projector:
             self.remove_projector()
 
-    def transform(self, X, l2_norm=False, batching_threshold=10000, amount_batches=1000):
+    def transform(
+        self,
+        X: Union[torch.tensor, np.ndarray],
+        l2_norm: bool = False,
+        batching_threshold: int = 10000,
+        amount_batches: int = 1000,
+    ):
+        """Projects the input data to the learnt space
+
+        Parameters
+        ----------
+        X : torch.tensor, np.ndarray
+            N x D input array containing N samples of dimension D
+        l2_norm : bool
+            L2 normalizes the output representation after projection
+        batching_threshold : int
+            Applies batching for large input matrices
+        amount_batches : int
+            Number of batches in which the input data is splitted before projection
+
+        Returns
+        -------
+        Z : torch.tensor, np.ndarray
+            Projected output tensor of size N x n_components
+        """
         if self.model is None:
             raise RuntimeError("model not initialized")
 
@@ -402,7 +539,7 @@ class TLDR:
             Z = Z.detach().numpy()
         return Z
 
-    def fit_transform(self, X, **kwargs):
+    def fit_transform(self, X: Union[torch.tensor, np.ndarray], **kwargs):
         """
         See documentation of methods fit() and transform()
         """
@@ -412,13 +549,28 @@ class TLDR:
         self.fit(X, **kwargs)
         return self.transform(X, l2_norm=l2_norm, batching_threshold=batching_threshold, amount_batches=amount_batches)
 
-    def forward(self, X, l2_norm=False):
+    def forward(self, X: Union[torch.tensor, np.ndarray], l2_norm: bool = False):
+        """Performs a forward pass over the encoder, projecting the input features to the learnt space
+
+        Parameters
+        ----------
+        X : tensor
+            N x D input tensor containing N samples of dimension D
+        l2_norm : bool
+            L2 normalizes the output representation after projection
+
+        Returns
+        -------
+        Z : tensor
+            Projected output tensor of size N x n_components
+        """
         Z = self.model.forward(X.float().to(self.device))
         if l2_norm:
             Z = Z / torch.linalg.norm(Z, 2, axis=1, keepdims=True)
         return Z
 
-    def save(self, path):
+    def save(self, path: Union[pathlib.PosixPath, str]):
+        """Saves both the weights and hyper-parameters of the model to disk"""
         path = Path(path)
         if not path.parent.is_dir():
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -432,7 +584,19 @@ class TLDR:
         }
         torch.save(checkpoint, path)
 
-    def load(self, path, init=False, strict=False):
+    def load(self, path: Union[pathlib.PosixPath, str], init: bool = False, strict: bool = False):
+        """Loads a model from disk
+
+        Parameters
+        ----------
+        path: Path, str
+            Location of the model in disk
+        init: bool
+            Forces the model to initialize with the hyper-parameters found in the file
+        strict: bool
+            If set to False it ignores non-matching keys
+        """
+
         checkpoint = torch.load(path, map_location=torch.device("cpu"))
         architecture = checkpoint.pop("architecture", None)
         if init:
@@ -449,35 +613,47 @@ class TLDR:
             self.start_epoch = checkpoint["epoch"]
         self.model.to(self.device)
 
-    def compute_knn(self, X):
+    def compute_knn(self, X: Union[torch.tensor, np.ndarray]):
+        """Computes the k nearest neighbors of each sample
+        Parameters
+        ----------
+        X : ndarray
+            N x D array of size containing N samples of dimension D
+        """
         self.knn_graph = get_knn_graph(
             X, self.n_neighbors, device=self.device.type, verbose=self.verbose, knn_approximation=self.knn_approximation
         )
 
     def get_knn(self):
+        """Returns the graph of K nearest neighbors"""
         return self.knn_graph
 
-    def save_knn(self, path):
+    def save_knn(self, path: Union[pathlib.PosixPath, str]):
+        """Saves the K nearest neighbors graph to disk"""
         path = Path(path)
         if not path.parent.is_dir():
             path.parent.mkdir(parents=True, exist_ok=True)
         np.save(path, self.knn_graph)
 
-    def load_knn(self, path):
+    def load_knn(self, path: Union[pathlib.PosixPath, str]):
+        """Loads the K nearest neihgbors graph from disk"""
         self.knn_graph = np.load(path)
 
     def _get_state_dict(self):
+        """Returns the model parameters"""
         return self.model.state_dict()
 
-    def to(self, device):
+    def to(self, device: Union[str, torch.device]):
+        """Moves computation to device"""
         self.device = torch.device(device)
         self.model.to(self.device)
 
     def remove_projector(self):
+        """Removes the projector head from the model"""
         self.model.projector = None
         self.model.bn = None
 
-    def evaluate(self, dataset, l2_norm_eval=True, whiten_eval=False, metric="mAP-medium"):
+    def evaluate(self, dataset, l2_norm_eval: bool = True, whiten_eval: bool = False, metric: str = "mAP-medium"):
         self.model.eval()
         dataset.transform(self)
         return dataset.evaluate(l2_norm=l2_norm_eval, whiten=whiten_eval, metric=metric)

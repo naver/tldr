@@ -39,9 +39,34 @@ class AverageMeter(object):
 
 
 def get_knn_graph(
-    X, n_neighbors, l2_norm_graph=False, percentage=None, device="cuda", metric="IP", verbose=0, knn_approximation=None
+    X, n_neighbors, l2_norm_graph=False, device="cuda", metric="IP", verbose=0, knn_approximation=None
 ):
+    """Computes and returns the k nearest neighbours of each sample
+    Parameters
+    ----------
+    X : ndarray
+        N x D array containing N samples of dimension D
+    n_neighbors : int
+        Number of nearest neighbors
+    l2_norm_graph : bool
+        L2 normalize samples
+    device : str
+        Selects the device [cpu, gpu]
+    metric : str
+        Selects the similarity metric [IP, L2]
+    verbose : int
+        Selects verbosity level [0, 1, 2]
+    knn_approximation : str
+        Enables nearest neighbor approximation [None, low, medium, high]
+    Returns
+    -------
+    knn_graph : ndarray
+        Array containing the indices of the k nearest neighbors of each sample
+    """
     knn_graph = None
+    metric = metric.upper()
+    if metric not in ["IP", "L2"]:
+        raise ValueError(f"similarity metric {metric} not supported. Metrics supported are 'L2' and 'IP'")
 
     if verbose > 1:
         print(f" - Creating {n_neighbors}-NN graph for training data")
@@ -110,6 +135,7 @@ def get_knn_graph(
 
 
 def tonumpy(x):
+    """Converts a tensor to numpy array"""
     if type(x).__module__ == torch.__name__:
         return x.cpu().numpy()
     else:
@@ -117,6 +143,7 @@ def tonumpy(x):
 
 
 def whiten(X, fudge=1e-18):
+    """Applies whitening to an NxD array of N samples with dimensionality D"""
     # the matrix X should be observations-by-components
 
     # get the covariance matrix
@@ -138,11 +165,13 @@ def whiten(X, fudge=1e-18):
 
 
 def l2_normalize(x, axis=-1):
+    """L2 normalizes an NxD array of N samples with dimensionality D"""
     x = F.normalize(x, p=2, dim=axis)
     return x
 
 
-def parse_net_config(net_config):
+def parse_net_config(net_config: str):
+    """Parses an architecture configuration string and returns the corresponding network type, number of hidden layers and their dimensionality"""
     config = net_config.split("-")
 
     net_type = config[0].lower()
@@ -171,11 +200,11 @@ def parse_net_config(net_config):
 
 
 def get_progress_bar():
+    """Returns a progress bar using the rich library"""
     return Progress(
         "[progress.description]{task.description}",
         SpinnerColumn(),
         BarColumn(),
-        # "[progress.percentage]{task.percentage:>3.0f}%",
         TextColumn("[bold blue]{task.fields[info]}", justify="right"),
         TimeRemainingColumn(),
     )
