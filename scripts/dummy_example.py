@@ -1,11 +1,11 @@
 import argparse
+
 import numpy as np
 
 from tldr import TLDR
 
-
-parser = argparse.ArgumentParser('Dummy TLDR example')
-parser.add_argument('--device', default='cuda', type=str)
+parser = argparse.ArgumentParser("Dummy TLDR example")
+parser.add_argument("--device", default="cuda", type=str)
 args = parser.parse_args()
 
 # Training
