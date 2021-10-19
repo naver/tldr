@@ -422,20 +422,24 @@ class TLDR:
         path = Path(path)
         if not path.parent.is_dir():
             path.parent.mkdir(parents=True, exist_ok=True)
+
+        architecture = self.architecture
+        if self.model.projector is None:
+            architecture["projector"] = None
         checkpoint = {
             "state_dict": self._get_state_dict(),
-            "architecture": self.architecture,
+            "architecture": architecture,
         }
         torch.save(checkpoint, path)
 
     def load(self, path, init=False, strict=False):
         checkpoint = torch.load(path, map_location=torch.device("cpu"))
-        arch = checkpoint.pop("architecture", None)
+        architecture = checkpoint.pop("architecture", None)
         if init:
-            self.architecture = arch
+            self.architecture = architecture
             self.initialize_model()
         else:
-            if arch != self.architecture:
+            if architecture != self.architecture:
                 raise ValueError(
                     f"Parameters in {path} do not match. Use load(path, init=True) to intialize the model with the parameters in this file."
                 )
