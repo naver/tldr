@@ -38,9 +38,7 @@ class AverageMeter(object):
         return fmtstr.format(**self.__dict__)
 
 
-def get_knn_graph(
-    X, n_neighbors, l2_norm_graph=False, device="cuda", metric="IP", verbose=0, knn_approximation=None
-):
+def get_knn_graph(X, n_neighbors, l2_norm_graph=False, device="cuda", metric="IP", verbose=0, knn_approximation=None):
     """Computes and returns the k nearest neighbours of each sample
     Parameters
     ----------

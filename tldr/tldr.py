@@ -5,8 +5,8 @@
 # LICENSE file in the root directory of this source tree.
 
 import json
-import random
 import pathlib
+import random
 from pathlib import Path
 from time import time
 from typing import Optional, Union
@@ -34,6 +34,29 @@ class TLDR_Module(nn.Module):
         norm_layer: str = "BN",
         loss: str = "BT",
     ):
+        """Constructor method of the TLDR Module
+
+        Parameters
+        ----------
+        inputdim : int
+            Input dimension
+        n_components : int
+            Output dimension
+        encoder : str
+            Encoder network architecture specification string (see README)
+        projector : str
+            Projector network architecture specification string (see README)
+        batch_size : int
+            Batch size
+        scale_loss : float
+            Loss scaling parameter of the LARS optimizer
+        lambd : float
+            Lambda parameter of the BarlowTwins loss
+        norm_layer : str
+            Type of normalization layer used [BN, LN]
+        loss : str
+            Training loss [BarlowTwins, MeanSquaredError, Contrastive]
+        """
         super().__init__()
 
         self.batch_size = batch_size
@@ -132,7 +155,7 @@ class TLDR_Module(nn.Module):
         elif self.loss in ["MSE", "MeanSquaredError"]:
             loss = nn.MSELoss(reduction="mean")(torch.vstack([x1, x2]), torch.vstack([z1, z2])).mul(self.scale_loss)
         elif self.loss == "Contrastive":
-            raise ValueError("Contrastive loss temporary removed :_( (WIP)")
+            raise ValueError("Contrastive loss temporarily removed :_( (WIP)")
         return loss.unsqueeze(0)
 
     def set_device(self, device: torch.device):
@@ -170,7 +193,7 @@ class TLDR:
         device: Union[str, torch.device] = "cpu",
         writer=None,
     ):
-        """ Constructor method of the TLDR class
+        """Constructor method of the TLDR class
 
         Parameters
         ----------
