@@ -1,10 +1,10 @@
 # TLDR: Twin Learning for Dimensionality Reduction
 
-[TLDR](https://arxiv.org/abs/2110.09455) (Twin Learning for Dimensionality Reduction) is an unsupervised dimensionality reduction method that combines neighborhood embedding learning with the simplicity and effectiveness of recent self-supervised learning losses.
+[TLDR](https://openreview.net/forum?id=86fhqdBUbx) (Twin Learning for Dimensionality Reduction) is an unsupervised dimensionality reduction method that combines neighborhood embedding learning with the simplicity and effectiveness of recent self-supervised learning losses.
 
 Inspired by manifold learning, TLDR uses nearest neighbors as a way to build pairs from a training set and a redundancy reduction loss to learn an encoder that produces representations invariant across such pairs.  Similar to other neighborhood embeddings, TLDR effectively and unsupervisedly learns low-dimensional spaces where local neighborhoods of the input space are preserved; unlike other manifold learning methods, it simply consists of an offline nearest neighbor computation step and a straightforward learning process that does not require mining negative samples to contrast, eigendecompositions, or cumbersome optimization solvers.
 
-More details and evaluation can be found in [our paper](https://arxiv.org/abs/2110.09455).
+More details and evaluation can be found in [our TMLR paper](https://openreview.net/forum?id=86fhqdBUbx).
 
 ![diagram](https://user-images.githubusercontent.com/228798/137484016-7cf1c255-0182-46c6-849b-76281fadb251.png)
 <br />
@@ -216,11 +216,12 @@ For example, `linear` will use a single linear layer; `flinear-1-512` will use a
 Please consider citing the following paper in your publications if this helps your research.
 
 ```
-@article{KLAL21,
+@article{kalantidis2022tldr,
  title = {TLDR: Twin Learning for Dimensionality Reduction},
  author = {Kalantidis, Y. and Lassance, C. and Almaz\'an, J. and Larlus, D.}
- journal = {arXiv:2110.09455},
- year = {2021}
+ journal={Transactions of Machine Learning Research},
+ year={2022},
+ url={https://openreview.net/forum?id=86fhqdBUbx},
 }
 ```
 
