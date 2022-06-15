@@ -218,7 +218,7 @@ Please consider citing the following paper in your publications if this helps yo
 ```
 @article{kalantidis2022tldr,
  title = {TLDR: Twin Learning for Dimensionality Reduction},
- author = {Kalantidis, Y. and Lassance, C. and Almaz\'an, J. and Larlus, D.}
+ author = {Kalantidis, Y. and Lassance, C. and Almaz\'an, J. and Larlus, D.},
  journal={Transactions of Machine Learning Research},
  year={2022},
  url={https://openreview.net/forum?id=86fhqdBUbx},
